@@ -1,143 +1,160 @@
-# Multi-Agent Orchestration System.
+# 🤖 AutoPR — Autonomous Pull Request Generator
 
-An autonomous AI software engineering platform that takes a **GitHub issue URL** and produces a **pull request** with a tested fix. Specialized agents research the repository, generate patches, validate them in an isolated Docker sandbox, and open a PR—while the React dashboard streams every step over WebSockets.
+An autonomous AI platform that takes a **GitHub issue URL** and delivers a **tested pull request** — no human intervention needed.
 
-The system uses a **stateful LangGraph** workflow with a self-correction loop: if tests fail, control returns to the Coding Agent with failure logs until tests pass or retry limits are hit.
+Specialized agents research the codebase, generate a fix, validate it inside an isolated Docker sandbox, and open a PR. Every step streams live to a React dashboard via WebSockets.
 
-## Architecture
+---
+
+## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     CLIENT (React + Vite)                        │
-│  Issue form · Agent terminal · Diff viewer · Test / PR panels     │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ REST POST /api/runs  +  WS /ws/{id}
-┌────────────────────────────▼────────────────────────────────────┐
-│                     FastAPI API Gateway                          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────┐
-│              LangGraph StateGraph (AgentState)                     │
-│                                                                  │
-│   research ──► coding ──► testing ──┬── pass ──► pr ──► END     │
-│                      ▲              ├── retry ──► coding         │
-│                      └──────────────└── fail ──► END             │
-└────────────┬───────────────────────┬────────────────────────────┘
-             │                       │
-     ┌───────▼───────┐       ┌───────▼───────┐       ┌──────────────┐
-     │  GitHub API   │       │  LLM (Claude/ │       │ Docker Engine │
-     │  (PyGithub)   │       │   OpenAI)     │       │  (sandbox)    │
-     └───────────────┘       └───────────────┘       └──────────────┘
+GitHub Issue URL
+       │
+       ▼
+  [Research Agent]  →  Reads issue + repo, identifies root cause
+       │
+       ▼
+  [Coding Agent]    →  Generates minimal code patch
+       │
+       ▼
+  [Testing Agent]   →  Runs pytest inside Docker sandbox
+       │
+       ├── PASS ──→  [PR Agent]  →  Opens Pull Request ✅
+       │
+       └── FAIL ──→  [Coding Agent]  →  Retries with error logs
+                     (up to 3 attempts, then fails gracefully)
 ```
+
+The system uses a **LangGraph stateful graph** with a self-correction loop — if tests fail, the Coding Agent gets the failure output and tries again, just like a real engineer would.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | LangGraph (stateful cyclic graph) |
+| Backend | FastAPI + WebSockets |
+| AI Models | Claude (Anthropic) / GPT-4 (OpenAI) |
+| Sandbox | Docker (network-isolated, read-only) |
+| GitHub Integration | PyGithub |
+| Frontend | React 18 + Vite + TailwindCSS |
+| Terminal UI | xterm.js |
+
+---
 
 ## Prerequisites
 
-| Tool | Version |
-|------|---------|
-| Python | 3.11+ |
-| Node.js | 18+ |
-| Docker Desktop | Running daemon (for Testing Agent) |
-| GitHub PAT | `repo` read + `pull_requests` write |
+- Python 3.11+
+- Node.js 18+
+- Docker Desktop (must be running)
+- GitHub PAT with `repo:read` and `pull_requests:write` scopes
+
+---
 
 ## Setup
 
-### 1. Clone and configure backend
-
+**1. Clone the repo**
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-cp .env.example .env
+git clone https://github.com/guptadhruv780/Multi-Agent-Orchestration-System
+cd Multi-Agent-Orchestration-System
 ```
 
-Edit `backend/.env` with your API keys (see table below).
-
-### 2. Install frontend
-
+**2. Configure environment**
 ```bash
-cd frontend
+cd backend
+cp .env.example .env
+# Edit .env and fill in your API keys
+```
+
+Required variables in `.env`:
+```
+ANTHROPIC_API_KEY=your_key_here
+GITHUB_TOKEN=your_pat_here
+DEFAULT_MODEL=claude-sonnet-4-20250514
+```
+
+**3. Install backend dependencies**
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+**4. Install frontend dependencies**
+```bash
+cd ../frontend
 npm install
 ```
 
-### 3. Start both services
+**5. Start both servers**
 
-**Linux / macOS:**
-
+Linux/macOS:
 ```bash
-chmod +x run_dev.sh
-./run_dev.sh
+chmod +x run_dev.sh && ./run_dev.sh
 ```
 
-**Windows (PowerShell):**
-
+Windows:
 ```powershell
 .\run_dev.ps1
 ```
 
-**Or manually:**
-
+Or manually:
 ```bash
 # Terminal 1
-cd backend && python main.py
+cd backend && uvicorn main:app --reload --port 8000
 
 # Terminal 2
 cd frontend && npm run dev
 ```
 
-- Dashboard: http://localhost:5173  
-- API docs: http://localhost:8000/docs  
-- Health: http://localhost:8000/api/health  
+- **Dashboard:** http://localhost:5173
+- **API Docs:** http://localhost:8000/docs
 
-## Environment variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (Claude models) | — |
-| `OPENAI_API_KEY` | OpenAI API key (GPT models) | — |
-| `GITHUB_TOKEN` | Default PAT (optional; can pass per run) | — |
-| `DEFAULT_MODEL` | Default LLM id | `claude-sonnet-4-20250514` |
-| `AGENT_MAX_RETRIES` | Max coding retries after test failure | `3` |
-| `DOCKER_BASE_IMAGE` | Test container image | `python:3.11-slim` |
-| `BACKEND_HOST` | API bind host | `0.0.0.0` |
-| `BACKEND_PORT` | API port | `8000` |
-| `FRONTEND_URL` | CORS origin | `http://localhost:5173` |
+---
 
 ## Usage
 
-1. Open the dashboard at http://localhost:5173  
-2. Paste a **GitHub issue URL** (e.g. `https://github.com/owner/repo/issues/1`)  
-3. Enter a **GitHub PAT** with access to that repo  
-4. Choose a model and click **Run Agent**  
-5. Watch live logs, diffs, test results, and the PR link when complete  
+1. Open the dashboard at `http://localhost:5173`
+2. Paste a GitHub issue URL (e.g. `https://github.com/owner/repo/issues/42`)
+3. Enter your GitHub PAT
+4. Choose a model and click **Run Agent**
+5. Watch live logs, diffs, test results, and the final PR link
 
-## Agent flow
+---
 
-| Agent | Role |
-|-------|------|
-| **Research** | Reads issue + repo tree, searches code, builds a context brief |
-| **Coding** | Generates minimal patches (retries with test logs on failure) |
-| **Testing** | Runs `pytest` in a hardened Docker container (`network_mode: none`) |
-| **PR** | Creates branch, commits files, opens pull request |
+## Agents
 
-## Tests
+| Agent | What it does |
+|---|---|
+| **Research** | Reads the issue and repo, finds relevant files, builds a context brief |
+| **Coding** | Generates a minimal patch; retries with test failure logs if needed |
+| **Testing** | Runs `pytest` inside a hardened Docker container (no network, read-only fs) |
+| **PR** | Creates a branch, commits files, opens a pull request |
+
+---
+
+## Docker Sandbox Security
+
+Tests run in an isolated container with:
+- `network_mode: none` — no internet access
+- Read-only filesystem
+- 512MB memory cap, 0.5 CPU cap
+- All Linux capabilities dropped
+
+---
+
+## Running Tests
 
 ```bash
 cd backend
 source .venv/bin/activate
-pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-## Project layout
-
-```
-backend/          FastAPI, LangGraph, agents, tools
-frontend/         React dashboard
-run_dev.sh        Start both servers (Unix)
-run_dev.ps1       Start both servers (Windows)
-```
+---
 
 ## License
 
-MIT (adjust as needed for your deployment).
+MIT
