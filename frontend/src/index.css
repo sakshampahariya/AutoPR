@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10%) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(120%) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.confetti-layer::before,
+.confetti-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle, #3fb950 2px, transparent 2px),
+    radial-gradient(circle, #58a6ff 2px, transparent 2px),
+    radial-gradient(circle, #d29922 2px, transparent 2px),
+    radial-gradient(circle, #f85149 2px, transparent 2px);
+  background-size: 48px 48px, 64px 64px, 56px 56px, 72px 72px;
+  background-position: 0 0, 24px 12px, 12px 36px, 36px 24px;
+  animation: confetti-fall 2.5s ease-out forwards;
+  opacity: 0.6;
+}
